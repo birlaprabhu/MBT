@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dept. Project Fund Manager</title>
+<style>
+:root{
+  --bg:#f4f6f5; --card:#ffffff; --text:#1c2b27; --muted:#5b6b66; --border:#dbe3e0;
+  --accent:#2f6f5e; --accent2:#7a5c2e; --danger:#b8433a; --warn:#c07d1e; --ok:#2f7d4f;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  box-sizing:border-box;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){--bg:#141b19;--card:#1d2624;--text:#e7efec;--muted:#9db0aa;--border:#334039;}
+}
+:root[data-theme="dark"]{--bg:#141b19;--card:#1d2624;--text:#e7efec;--muted:#9db0aa;--border:#334039;}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*{box-sizing:border-box}
+body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-serif;font-size:14px}
+header{position:sticky;top:0;padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top,0px));background:var(--accent);color:#fff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;z-index:5}
+header h1{font-size:16px;margin:0}
+header .who{font-size:12px;opacity:.9}
+button{cursor:pointer;border:none;border-radius:6px;padding:8px 14px;background:var(--accent);color:#fff;font-size:13px}
+button.secondary{background:transparent;border:1px solid var(--border);color:var(--text)}
+button.danger{background:var(--danger)}
+button.small{padding:4px 9px;font-size:12px}
+input,select{padding:7px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:13px;width:100%}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px}
+.grid{display:grid;gap:10px}
+.g2{grid-template-columns:1fr 1fr}
+.g3{grid-template-columns:1fr 1fr 1fr}
+.g4{grid-template-columns:1fr 1fr 1fr 1fr}
+@media(max-width:640px){.g2,.g3,.g4{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{border:1px solid var(--border);padding:6px 8px;text-align:left}
+th{background:var(--bg)}
+.tblwrap{overflow-x:auto}
+.tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;color:#fff}
+.ok{background:var(--ok)} .warn{background:var(--warn)} .danger{background:var(--danger)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{background:var(--card);color:var(--text);border:1px solid var(--border)}
+.tabs button.active{background:var(--accent);color:#fff}
+.projectcard{border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;cursor:pointer}
+.projectcard:hover{border-color:var(--accent)}
+.muted{color:var(--muted);font-size:12px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.hidden{display:none}
+input.field-error,select.field-error{border-color:var(--danger);background:rgba(184,67,58,.07)}
+.errbox{background:rgba(184,67,58,.08);border:1px solid var(--danger);color:var(--danger);padding:8px 10px;border-radius:6px;font-size:12.5px;margin-bottom:10px}
+.searchbar{margin-bottom:12px}
+.searchbar input{max-width:320px}
+a{color:var(--accent)}
+.itemrow{display:grid;grid-template-columns:1.6fr .7fr .8fr .6fr .6fr .8fr 30px;gap:6px;margin-bottom:6px}
+.itemrow-head{display:grid;gap:6px;margin-bottom:6px}
+@media(max-width:760px){.itemrow{grid-template-columns:1fr 1fr}}
+h2{font-size:15px;margin:0 0 10px}
+h3{font-size:13px;margin:14px 0 8px;color:var(--accent)}
+footer{text-align:center;color:var(--muted);font-size:11px;padding:20px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🧪 Dept. Project Fund Manager</h1>
+  <div class="who" id="whoBar"></div>
+</header>
+<div class="wrap" id="app"></div>
+<footer>Prototype — browser-local storage per device. For real multi-user concurrent access, connect this UI to a server database.</footer>
+
+<script>
+// ---------- API helper ----------
+async function api(path, opts){
+  let res;
+  try{ res = await fetch(path, opts); }
+  catch(e){ throw new Error('Could not reach the server. Check your connection and try again.'); }
+  let data=null;
+  try{ data = await res.json(); }catch(e){}
+  if(!res.ok){ throw new Error((data&&data.error) || ('Request failed ('+res.status+')')); }
+  return data;
+}
+const API = {
+  login:(username,password)=>api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})}),
+  getUsers:()=>api('/api/users?actingUserId='+cur.userId),
+  createUser:(payload)=>api('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,actingUserId:cur.userId})}),
+  getMeta:()=>api('/api/meta'),
+  addCategory:(name,multi)=>api('/api/categories',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,multi})}),
+  addPType:(name)=>api('/api/ptypes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),
+  getProjects:()=>api('/api/projects?actingUserId='+cur.userId),
+  getProjectDetail:(id)=>api('/api/projects/'+id),
+  createProject:(payload)=>api('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,actingUserId:cur.userId})}),
+  getEntries:(projectId)=>api('/api/entries?projectId='+projectId),
+  createEntry:(payload)=>api('/api/entries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,actingUserId:cur.userId})}),
+  getStock:(projectId)=>api('/api/stock?projectId='+projectId),
+  getStockTx:(projectId)=>api('/api/stock/tx?projectId='+projectId),
+  issueStock:(payload)=>api('/api/stock/issue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,actingUserId:cur.userId})}),
+  getYears:()=>api('/api/years'),
+  getReport:(year)=>api('/api/report?year='+encodeURIComponent(year)+'&actingUserId='+cur.userId)
+};
+
+const CAT_FIELDS = {
+  "Travelling Allowances": {gst:false, amountLabel:"Fare / TA Amount", fields:[
+    {key:"travellerName",label:"Traveller Name"},{key:"designation",label:"Designation"},
+    {key:"fromPlace",label:"From"},{key:"toPlace",label:"To"},
+    {key:"mode",label:"Mode of Travel"},{key:"purpose",label:"Purpose of Travel"},
+    {key:"journeyDate",label:"Date of Journey",type:"date"}]},
+  "Guest Lectures": {gst:false, amountLabel:"Honorarium Amount", fields:[
+    {key:"speakerName",label:"Speaker Name"},{key:"institution",label:"Institution / Organization"},
+    {key:"topic",label:"Topic"},{key:"lectureDate",label:"Date of Lecture",type:"date"}]},
+  "University Research Fellowship": {gst:false, amountLabel:"Fellowship Amount", fields:[
+    {key:"fellowName",label:"Fellow Name"},{key:"period",label:"Period (Month/Year)"}]},
+  "Equipment Maintenance": {gst:true, amountLabel:"Service Amount", fields:[
+    {key:"equipmentName",label:"Equipment Name"},{key:"serviceProvider",label:"Service Provider"},
+    {key:"serviceDate",label:"Service Date",type:"date"},{key:"workDesc",label:"Description of Work"}]},
+  "Contingency/Electrical & Repair works": {gst:true, amountLabel:"Amount", fields:[
+    {key:"workDesc",label:"Description of Work"},{key:"contractor",label:"Contractor / Vendor"}]},
+  "Educational Tours": {gst:false, amountLabel:"Total Amount", fields:[
+    {key:"destination",label:"Destination"},{key:"noStudents",label:"No. of Students"},
+    {key:"purpose",label:"Purpose"},{key:"tourDate",label:"Date",type:"date"}]},
+  "Garden Maintenance": {gst:true, amountLabel:"Amount", fields:[
+    {key:"workDesc",label:"Description"},{key:"period",label:"Period"}]},
+  "Software": {gst:true, amountLabel:"License Amount", fields:[
+    {key:"softwareName",label:"Software Name"},{key:"licenseType",label:"License Type"},
+    {key:"validity",label:"Validity / Period"}]},
+  "Mentor Professor/Industrial Expert/Guest Lecture": {gst:false, amountLabel:"Honorarium / Fee Amount", fields:[
+    {key:"expertName",label:"Expert / Mentor Name"},{key:"organization",label:"Organization"},
+    {key:"purpose",label:"Topic / Purpose"},{key:"eventDate",label:"Date",type:"date"}]}
+};
+function cfgFor(k){ return CAT_FIELDS[k] || {gst:true, fields:[], amountLabel:'Amount'}; }
+
+let cur = {userId:null,name:'',username:'',role:'',lab:'', view:'login', projectId:null, projectName:'', tab:'dashboard'};
+let META = {cats:[],ptypes:[],stockCats:[]};
+function isAdmin(){ return cur.role==='Admin'; }
+function money(n){return '₹'+(Number(n)||0).toLocaleString('en-IN',{maximumFractionDigits:2});}
+function el(html){const d=document.createElement('div');d.innerHTML=html;return d.firstElementChild;}
+const LOWPCT=0.10;
+function statusFor(sanc,spent){
+  const bal=sanc-spent;
+  if(sanc<=0) return {bal,tag:'ok',label:'No budget set'};
+  if(bal<0) return {bal,tag:'danger',label:'Over budget'};
+  if(bal<sanc*LOWPCT) return {bal,tag:'warn',label:'Low balance'};
+  return {bal,tag:'ok',label:'Healthy'};
+}
+function showErr(container,msg){ container.innerHTML = `<div class="errbox">${msg}</div>`; }
+
+async function render(){
+  const app=document.getElementById('app');
+  const who=document.getElementById('whoBar');
+  who.textContent = cur.userId ? (cur.name+' — '+cur.role) : '';
+  app.innerHTML='<p class="muted">Loading…</p>';
+  try{
+    if(cur.view==='login') return renderLogin(app);
+    if(!META.cats.length) META = await API.getMeta();
+    if(cur.view==='dashboard') return await renderDashboard(app);
+    if(cur.view==='project') return await renderProject(app);
+  }catch(e){
+    app.innerHTML=`<div class="card"><div class="errbox">${e.message}</div></div>`;
+  }
+}
+
+function renderLogin(app){
+  app.innerHTML='';
+  const c=el(`<div class="card" style="max-width:420px;margin:60px auto">
+    <h2>Login</h2>
+    <div id="loginErr"></div>
+    <div class="grid">
+      <div><label>Username</label><input id="loginUser" placeholder="Username"></div>
+      <div><label>Password</label><input id="loginPass" type="password"></div>
+    </div>
+    <button id="btnLogin" style="width:100%;margin-top:10px">Login</button>
+  </div>`);
+  app.appendChild(c);
+  c.querySelector('#btnLogin').onclick=async ()=>{
+    const username=c.querySelector('#loginUser').value.trim();
+    const password=c.querySelector('#loginPass').value;
+    try{
+      const u=await API.login(username,password);
+      cur.userId=u.id; cur.name=u.name; cur.username=u.username; cur.role=u.role; cur.lab=u.lab;
+      META = await API.getMeta();
+      cur.view='dashboard'; render();
+    }catch(e){ showErr(c.querySelector('#loginErr'), e.message); }
+  };
+}
+
+// ---------- Dashboard ----------
+async function renderDashboard(app){
+  const admin=isAdmin();
+  const projects = await API.getProjects();
+  app.innerHTML='';
+  const c=el(`<div>
+    <div class="row" style="margin-bottom:10px">
+      <h2>${admin?'All Projects (Admin view)':'My Projects'}</h2>
+      <div>
+        <button class="secondary small" id="btnLogout">Logout</button>
+        ${admin?'<button class="secondary small" id="btnUsers">👤 Manage Users</button><button class="secondary small" id="btnReport">📊 AY Report</button>':''}
+        <button class="small" id="btnNewProj">+ New Project</button>
+      </div>
+    </div>
+    <div class="searchbar"><input id="projSearch" placeholder="🔍 Search projects by name, type, year${admin?', professor':''}..."></div>
+    <div id="projList"></div>
+    <div id="overallTotal"></div>
+  </div>`);
+  app.appendChild(c);
+  c.querySelector('#btnLogout').onclick=()=>{cur={userId:null,view:'login'}; META={cats:[],ptypes:[],stockCats:[]}; render();};
+  c.querySelector('#btnNewProj').onclick=()=>openProjectForm();
+  if(admin){
+    c.querySelector('#btnUsers').onclick=()=>openManageUsers();
+    c.querySelector('#btnReport').onclick=()=>openAYReport();
+  }
+  const list=c.querySelector('#projList');
+  const totalBox=c.querySelector('#overallTotal');
+  function draw(filterText){
+    const q=(filterText||'').trim().toLowerCase();
+    let projs=projects;
+    if(q){
+      projs=projs.filter(p=>
+        p.name.toLowerCase().includes(q) || p.type.toLowerCase().includes(q) ||
+        (p.year||'').toLowerCase().includes(q) || (p.lab||'').toLowerCase().includes(q) ||
+        (admin && p.ownerName.toLowerCase().includes(q))
+      );
+    }
+    list.innerHTML='';
+    if(!projs.length){
+      list.innerHTML=`<p class="muted">${q?'No projects match your search.':'No projects yet. Click "+ New Project" to add one.'}</p>`;
+      totalBox.innerHTML=''; return;
+    }
+    let grandSanc=0, grandSpent=0;
+    projs.forEach(p=>{
+      grandSanc+=p.totalSanctioned; grandSpent+=p.totalSpent;
+      const card=el(`<div class="projectcard">
+        <div class="row">
+          <div><b>${p.name}</b> <span class="muted">(${p.type}, AY ${p.year}${p.extended?' — Extended':''})${admin?' · '+p.ownerName:''}</span></div>
+          <div>${p.flags?`<span class="tag warn">${p.flags} flag(s)</span>`:'<span class="tag ok">On track</span>'}</div>
+        </div>
+        <div class="muted">Sanctioned: ${money(p.totalSanctioned)} &nbsp;|&nbsp; Spent: ${money(p.totalSpent)} &nbsp;|&nbsp; Balance: ${money(p.totalSanctioned-p.totalSpent)}</div>
+      </div>`);
+      card.onclick=()=>{cur.projectId=p.id; cur.projectName=p.name; cur.view='project'; cur.tab='dashboard'; render();};
+      list.appendChild(card);
+    });
+    totalBox.innerHTML=`<div class="card" style="margin-top:4px;background:var(--bg)">
+      <div class="row"><b>Overall Total (${projs.length} project${projs.length===1?'':'s'})</b>
+      <div><b>Sanctioned: ${money(grandSanc)} &nbsp;|&nbsp; Spent: ${money(grandSpent)} &nbsp;|&nbsp; Balance: ${money(grandSanc-grandSpent)}</b></div></div>
+    </div>`;
+  }
+  c.querySelector('#projSearch').addEventListener('input',e=>draw(e.target.value));
+  draw('');
+}
+
+// ---------- Manage Users ----------
+async function openManageUsers(){
+  const app=document.getElementById('app');
+  const users = await API.getUsers();
+  const c=el(`<div class="card">
+    <div class="row"><h2>Manage Users (Admin only)</h2><button class="secondary small" id="backD">← Back</button></div>
+    <div id="userErr"></div>
+    <div class="tblwrap"><table id="userTbl"><tr><th>Name</th><th>Username</th><th>Role</th><th>Lab</th></tr>
+    ${users.map(u=>`<tr><td>${u.name}</td><td>${u.username}</td><td>${u.role}</td><td>${u.lab||'-'}</td></tr>`).join('')}
+    </table></div>
+    <h3>Create New User</h3>
+    <div class="grid g3">
+      <div><label>Full Name</label><input id="uName" placeholder="Dr. B. Rao"></div>
+      <div><label>Username</label><input id="uUser" placeholder="brao"></div>
+      <div><label>Password</label><input id="uPass" type="password"></div>
+    </div>
+    <div class="grid g2" style="margin-top:8px">
+      <div><label>Role</label><select id="uRole"><option>Professor</option><option>Associate Professor</option><option>Assistant Professor</option><option>Other</option><option>Admin</option></select></div>
+      <div><label>Lab / Department</label><input id="uLab" placeholder="Microbiology Lab 2"></div>
+    </div>
+    <button id="uSave" style="margin-top:10px">Create User</button>
+  </div>`);
+  app.innerHTML=''; app.appendChild(c);
+  c.querySelector('#backD').onclick=render;
+  c.querySelector('#uSave').onclick=async ()=>{
+    const name=c.querySelector('#uName').value.trim();
+    const username=c.querySelector('#uUser').value.trim();
+    const password=c.querySelector('#uPass').value;
+    const role=c.querySelector('#uRole').value;
+    const lab=c.querySelector('#uLab').value.trim();
+    const missing=[];
+    if(!name)missing.push('Full Name');
+    if(!username)missing.push('Username');
+    if(!password)missing.push('Password');
+    if(missing.length){showErr(c.querySelector('#userErr'),'Please fill: '+missing.join(', '));return;}
+    try{
+      await API.createUser({name,username,password,role,lab});
+      openManageUsers();
+    }catch(e){ showErr(c.querySelector('#userErr'), e.message); }
+  };
+}
+
+// ---------- Academic Year Report ----------
+async function openAYReport(){
+  const app=document.getElementById('app');
+  const years = await API.getYears();
+  const c=el(`<div class="card">
+    <div class="row"><h2>Academic Year Report (Admin only)</h2><button class="secondary small" id="backD">← Back</button></div>
+    <div class="grid g3">
+      <div><label>Academic Year</label><select id="ayPick"><option value="">-- select AY --</option>${years.map(y=>`<option value="${y}">${y}</option>`).join('')}</select></div>
+      <div style="align-self:end"><button class="secondary small" id="ayPrint">🖨 Print</button></div>
+    </div>
+    <div id="ayBody" style="margin-top:14px"></div>
+  </div>`);
+  app.innerHTML=''; app.appendChild(c);
+  c.querySelector('#backD').onclick=render;
+  c.querySelector('#ayPrint').onclick=()=>window.print();
+  const body=c.querySelector('#ayBody');
+  c.querySelector('#ayPick').onchange=async (e)=>{
+    const year=e.target.value;
+    body.innerHTML='';
+    if(!year) return;
+    const rows = await API.getReport(year);
+    let grandSanc=0,grandSpent=0,tableRows='',noSpendRows='';
+    rows.forEach(r=>{
+      grandSanc+=r.sanctioned; grandSpent+=r.spent;
+      tableRows+=`<tr><td>${r.ownerName}</td><td>${r.projectCount}</td><td>${r.entryCount}</td><td>${money(r.sanctioned)}</td><td>${money(r.spent)}</td><td>${money(r.sanctioned-r.spent)}</td></tr>`;
+      if(r.entryCount===0) noSpendRows+=`<li>${r.ownerName} — ${r.projectNames.join(', ')}</li>`;
+    });
+    body.innerHTML=`
+      <h3>Summary by Professor — AY ${year}</h3>
+      <div class="tblwrap"><table><tr><th>Professor</th><th>Projects</th><th>Invoice Entries</th><th>Sanctioned</th><th>Spent</th><th>Balance</th></tr>
+      ${tableRows||'<tr><td colspan="6" class="muted">No projects in this AY</td></tr>'}
+      <tr style="font-weight:bold"><td colspan="3">TOTAL</td><td>${money(grandSanc)}</td><td>${money(grandSpent)}</td><td>${money(grandSanc-grandSpent)}</td></tr></table></div>
+      <h3>⚠ Professors who have not recorded any spending in AY ${year}</h3>
+      ${noSpendRows? `<ul>${noSpendRows}</ul>` : '<p class="muted">Everyone with a project in this AY has recorded at least one invoice entry.</p>'}
+    `;
+  };
+}
+
+// ---------- New Project ----------
+async function openProjectForm(){
+  const app=document.getElementById('app');
+  const admin=isAdmin();
+  const professors = admin ? (await API.getUsers()).filter(u=>u.role!=='Admin') : [];
+  const c=el(`<div class="card">
+    <h2>New Project</h2>
+    <div id="projErr"></div>
+    <div class="grid g3">
+      <div><label>Project Name</label><input id="pName" placeholder="Antimicrobial Screening Study"></div>
+      <div><label>Project Type</label><select id="pType">${META.ptypes.map(t=>`<option>${t}</option>`).join('')}</select></div>
+      <div><label>Academic Year</label><input id="pYear" placeholder="2026-27"></div>
+    </div>
+    <div class="grid g2" style="margin-top:6px">
+      <div></div>
+      <div class="row" style="gap:6px">
+        <input id="newPType" placeholder="New project type (e.g. RUSA, State Project)" style="flex:1">
+        <button class="secondary small" id="addPType" type="button">+ Add Type</button>
+      </div>
+    </div>
+    <div class="grid g2" style="margin-top:8px">
+      ${admin?`<div><label>Assign to Professor</label><select id="pOwner"><option value="">-- select professor --</option>${professors.map(u=>`<option value="${u.id}">${u.name} (${u.username})</option>`).join('')}</select></div>`:''}
+      <div><label>Lab</label><input id="pLab" value="${admin?'':(cur.lab||'')}"></div>
+    </div>
+    <div class="grid g2" style="margin-top:8px">
+      <div><label>Extended from previous year?</label><select id="pExt"><option value="0">No</option><option value="1">Yes</option></select></div>
+    </div>
+    <h3>Categories used in this project</h3>
+    <p class="muted">Tick only the categories this project needs. Don't see one you need? Add it below.</p>
+    <div class="grid g3" id="catInputs">
+      ${META.cats.map(cat=>`<div class="catBlock" style="border:1px solid var(--border);border-radius:6px;padding:8px">
+        <label style="display:flex;align-items:center;gap:6px;color:var(--text);font-weight:normal">
+          <input type="checkbox" class="catChk" data-cat="${cat.k}"> ${cat.k}
+        </label>
+        <input type="number" min="0" class="catAmt hidden" data-cat="${cat.k}" placeholder="Sanctioned amount (₹)" style="margin-top:6px">
+      </div>`).join('')}
+    </div>
+    <div class="grid g3" style="margin-top:8px">
+      <div><label>New Category Name</label><input id="newCatName" placeholder="e.g. Publication Charges"></div>
+      <div><label>Entry Type</label><select id="newCatType"><option value="0">Single entry (like TA, Guest Lecture)</option><option value="1">Multiple items (like Equipment)</option></select></div>
+      <div style="align-self:end"><button class="secondary small" id="addCat" type="button" style="width:100%">+ Add Category</button></div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="secondary" id="cancelP">Cancel</button>
+      <button id="saveP">Save Project</button>
+    </div>
+  </div>`);
+  app.innerHTML=''; app.appendChild(c);
+  const catInputs=c.querySelector('#catInputs');
+  function wireChk(chk){
+    chk.addEventListener('change',()=>{
+      const amt=c.querySelector(`.catAmt[data-cat="${CSS.escape(chk.dataset.cat)}"]`);
+      amt.classList.toggle('hidden',!chk.checked);
+      if(!chk.checked) amt.value='0';
+    });
+  }
+  c.querySelectorAll('.catChk').forEach(wireChk);
+  c.querySelector('#addPType').onclick=async ()=>{
+    const inp=c.querySelector('#newPType');
+    const val=inp.value.trim();
+    if(!val) return;
+    const res = await API.addPType(val);
+    META.ptypes = res.ptypes;
+    if(![...c.querySelector('#pType').options].some(o=>o.value===val)){
+      c.querySelector('#pType').appendChild(el(`<option>${val}</option>`));
+    }
+    c.querySelector('#pType').value=val;
+    inp.value='';
+  };
+  c.querySelector('#addCat').onclick=async ()=>{
+    const nameInp=c.querySelector('#newCatName');
+    const name=nameInp.value.trim();
+    if(!name) return;
+    if(META.cats.some(x=>x.k.toLowerCase()===name.toLowerCase())){
+      alert('That category already exists.'); return;
+    }
+    const multi=c.querySelector('#newCatType').value==='1';
+    const res = await API.addCategory(name,multi);
+    META.cats = res.cats;
+    const block=el(`<div class="catBlock" style="border:1px solid var(--border);border-radius:6px;padding:8px">
+      <label style="display:flex;align-items:center;gap:6px;color:var(--text);font-weight:normal">
+        <input type="checkbox" class="catChk" data-cat="${name}" checked> ${name}
+      </label>
+      <input type="number" min="0" class="catAmt" data-cat="${name}" placeholder="Sanctioned amount (₹)" style="margin-top:6px">
+    </div>`);
+    catInputs.appendChild(block);
+    wireChk(block.querySelector('.catChk'));
+    nameInp.value='';
+  };
+  c.querySelector('#cancelP').onclick=render;
+  c.querySelector('#saveP').onclick=async ()=>{
+    c.querySelectorAll('.field-error').forEach(i=>i.classList.remove('field-error'));
+    const errs=[];
+    const nameInp=c.querySelector('#pName');
+    const name=nameInp.value.trim();
+    if(!name){errs.push('Project Name'); nameInp.classList.add('field-error');}
+    const yearInp=c.querySelector('#pYear');
+    const year=yearInp.value.trim();
+    if(!year){errs.push('Academic Year'); yearInp.classList.add('field-error');}
+    let ownerId;
+    if(admin){
+      const ownerSel=c.querySelector('#pOwner');
+      ownerId=ownerSel.value;
+      if(!ownerId){errs.push('Assign to Professor'); ownerSel.classList.add('field-error');}
+    }
+    const checked=[...c.querySelectorAll('.catChk')].filter(x=>x.checked);
+    if(!checked.length){errs.push('At least one category');}
+    if(errs.length){showErr(c.querySelector('#projErr'),'Please fill: '+errs.join(', '));return;}
+    const categories = checked.map(chk=>({k:chk.dataset.cat, amount:Number(c.querySelector(`.catAmt[data-cat="${CSS.escape(chk.dataset.cat)}"]`).value)||0}));
+    try{
+      await API.createProject({name,type:c.querySelector('#pType').value,year,ownerId,
+        lab:c.querySelector('#pLab').value.trim(), extended:c.querySelector('#pExt').value==='1', categories});
+      cur.view='dashboard'; render();
+    }catch(e){ showErr(c.querySelector('#projErr'), e.message); }
+  };
+}
+
+// ---------- Project tabs ----------
+async function renderProject(app){
+  const detail = await API.getProjectDetail(cur.projectId);
+  app.innerHTML='';
+  const header=el(`<div class="row" style="margin-bottom:10px">
+    <div><h2 style="margin:0">${detail.name}</h2><span class="muted">${detail.type} · AY ${detail.year}${detail.extended?' · Extended':''} · ${detail.lab||''}${isAdmin()?' · '+detail.ownerName:''}</span></div>
+    <button class="secondary small" id="backDash">← Dashboard</button>
+  </div>`);
+  app.appendChild(header);
+  header.querySelector('#backDash').onclick=()=>{cur.view='dashboard'; render();};
+
+  const tabs=el(`<div class="tabs">
+    <button data-t="dashboard">Budget & Flags</button>
+    <button data-t="entry">New Invoice Entry</button>
+    <button data-t="stock">Stock (Equipment/Chemicals)</button>
+    <button data-t="statement">Account Statement</button>
+  </div>`);
+  app.appendChild(tabs);
+  tabs.querySelectorAll('button').forEach(b=>{
+    if(b.dataset.t===cur.tab) b.classList.add('active');
+    b.onclick=()=>{cur.tab=b.dataset.t; render();};
+  });
+
+  const body=el('<div></div>'); app.appendChild(body);
+  if(cur.tab==='dashboard') renderBudgetTab(body,detail);
+  if(cur.tab==='entry') renderEntryTab(body,detail);
+  if(cur.tab==='stock') await renderStockTab(body,detail);
+  if(cur.tab==='statement') await renderStatementTab(body,detail);
+}
+
+function renderBudgetTab(body,detail){
+  let rows='';
+  detail.categories.forEach(c=>{
+    rows+=`<tr><td>${c.category}</td><td>${money(c.sanctioned)}</td><td>${money(c.spent)}</td><td>${money(c.balance)}</td><td><span class="tag ${c.status}">${c.label}</span></td></tr>`;
+  });
+  body.appendChild(el(`<div class="card"><div class="tblwrap"><table>
+    <tr><th>Category</th><th>Sanctioned</th><th>Spent</th><th>Balance</th><th>Status</th></tr>${rows}
+  </table></div></div>`));
+}
+
+function renderEntryTab(body,detail){
+  const pcats = detail.categories; // [{category, multi, ...}]
+  const card=el(`<div class="card">
+    <h2>New Invoice Entry</h2>
+    <div id="entryErr"></div>
+    <div class="grid g2">
+      <div><label>Category</label><select id="eCat">${pcats.map(c=>`<option value="${c.category}">${c.category}</option>`).join('')}</select></div>
+      <div><label>Vendor / Payee</label><input id="eVendor" placeholder="Vendor or payee name"></div>
+    </div>
+    <div class="grid g4" style="margin-top:8px">
+      <div><label>Invoice Date</label><input type="date" id="eInvDate"></div>
+      <div><label>Invoice No.</label><input id="eInvNo"></div>
+      <div><label>Finance Office Voucher No.</label><input id="eVouNo"></div>
+      <div><label>Voucher Date</label><input type="date" id="eVouDate"></div>
+    </div>
+    <div id="dynamicSection"></div>
+    <div class="row" style="margin-top:14px">
+      <div><b>Invoice Total: <span id="grandTotal">₹0</span></b></div>
+      <button id="saveEntry">Save Entry</button>
+    </div>
+  </div>`);
+  body.appendChild(card);
+  const catSel=card.querySelector('#eCat');
+  const dyn=card.querySelector('#dynamicSection');
+  const grandTotalEl=card.querySelector('#grandTotal');
+
+  function buildMultiSection(cat){
+    const isChem = cat==="Chemicals and Glasswares";
+    const rowCols = isChem ? '1.4fr .6fr .7fr .5fr .5fr .9fr .8fr 30px' : '1.6fr .7fr .8fr .6fr .6fr .8fr 30px';
+    dyn.innerHTML=`<h3>Items</h3>
+      <div class="itemrow-head muted" style="grid-template-columns:${rowCols}"><div>Item</div><div>Qty</div><div>Rate (₹)</div><div>Disc %</div><div>GST %</div>${isChem?'<div>Expiry (optional)</div>':''}<div>Line Total</div><div></div></div>
+      <div id="itemRows"></div>
+      <button class="secondary small" id="addRow" type="button">+ Add item</button>`;
+    const rowsWrap=dyn.querySelector('#itemRows');
+    function addItemRow(){
+      const r=el(`<div class="itemrow" style="grid-template-columns:${rowCols}">
+        <input class="it-name" placeholder="Item / description">
+        <input class="it-qty" type="number" value="1" min="0">
+        <input class="it-rate" type="number" value="0" min="0">
+        <input class="it-disc" type="number" value="0" min="0" max="100">
+        <input class="it-gst" type="number" value="18" min="0" max="100">
+        ${isChem?'<input class="it-expiry" type="date" title="Expiry date (optional)">':''}
+        <div class="it-total muted">₹0</div>
+        <button class="small danger it-del" type="button">×</button>
+      </div>`);
+      ['it-qty','it-rate','it-disc','it-gst'].forEach(cls=>r.querySelector('.'+cls).addEventListener('input',recalc));
+      r.querySelector('.it-del').onclick=()=>{r.remove();recalc();};
+      rowsWrap.appendChild(r); recalc();
+    }
+    function lineCalc(r){
+      const qty=Number(r.querySelector('.it-qty').value)||0;
+      const rate=Number(r.querySelector('.it-rate').value)||0;
+      const disc=Number(r.querySelector('.it-disc').value)||0;
+      const gst=Number(r.querySelector('.it-gst').value)||0;
+      const base=qty*rate; const afterDisc=base-(base*disc/100); const total=afterDisc+(afterDisc*gst/100);
+      r.querySelector('.it-total').textContent=money(total);
+      return total;
+    }
+    function recalc(){let grand=0; rowsWrap.querySelectorAll('.itemrow').forEach(r=>grand+=lineCalc(r)); grandTotalEl.textContent=money(grand);}
+    dyn.querySelector('#addRow').onclick=addItemRow;
+    addItemRow();
+  }
+
+  function buildSingleSection(cat){
+    const cfg=cfgFor(cat);
+    const fieldsHtml=cfg.fields.map(f=>`<div><label>${f.label}</label><input type="${f.type||'text'}" class="dyn-field" data-key="${f.key}"></div>`).join('');
+    dyn.innerHTML=`<h3>${cat} Details</h3>
+      <div class="grid g3">${fieldsHtml}</div>
+      <div class="grid ${cfg.gst?'g4':'g2'}" style="margin-top:8px">
+        <div><label>${cfg.amountLabel||'Amount'} (₹)</label><input type="number" min="0" id="sAmount" value="0"></div>
+        ${cfg.gst?'<div><label>Discount %</label><input type="number" min="0" max="100" id="sDisc" value="0"></div><div><label>GST %</label><input type="number" min="0" max="100" id="sGst" value="0"></div>':''}
+      </div>`;
+    function recalc(){
+      const amt=Number(dyn.querySelector('#sAmount').value)||0;
+      let total=amt;
+      if(cfg.gst){
+        const disc=Number(dyn.querySelector('#sDisc').value)||0;
+        const gst=Number(dyn.querySelector('#sGst').value)||0;
+        const afterDisc=amt-(amt*disc/100);
+        total=afterDisc+(afterDisc*gst/100);
+      }
+      grandTotalEl.textContent=money(total);
+    }
+    dyn.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',recalc));
+    recalc();
+  }
+
+  function isMulti(cat){ const c=pcats.find(x=>x.category===cat); return c?c.multi:false; }
+  function rebuild(){
+    const cat=catSel.value;
+    if(isMulti(cat)) buildMultiSection(cat); else buildSingleSection(cat);
+  }
+  catSel.onchange=rebuild;
+  rebuild();
+
+  card.querySelector('#saveEntry').onclick=async ()=>{
+    card.querySelectorAll('.field-error').forEach(inp=>inp.classList.remove('field-error'));
+    const errs=[];
+    const reqTop=[['#eVendor','Vendor / Payee'],['#eInvDate','Invoice Date'],['#eInvNo','Invoice No.'],['#eVouNo','Finance Office Voucher No.'],['#eVouDate','Voucher Date']];
+    reqTop.forEach(([sel,label])=>{
+      const inp=card.querySelector(sel);
+      if(!inp.value || !inp.value.trim()){errs.push(label); inp.classList.add('field-error');}
+    });
+    const cat=catSel.value;
+    let items=[], details=null;
+    if(isMulti(cat)){
+      const rows=[...dyn.querySelectorAll('.itemrow')];
+      let anyValid=false;
+      rows.forEach(r=>{
+        const nameInp=r.querySelector('.it-name'), qtyInp=r.querySelector('.it-qty'), rateInp=r.querySelector('.it-rate');
+        const name=nameInp.value.trim(), qty=Number(qtyInp.value)||0, rate=Number(rateInp.value)||0;
+        if(!name && qty<=1 && rate<=0) return;
+        let rowOk=true;
+        if(!name){nameInp.classList.add('field-error');rowOk=false;}
+        if(qty<=0){qtyInp.classList.add('field-error');rowOk=false;}
+        if(rate<=0){rateInp.classList.add('field-error');rowOk=false;}
+        if(rowOk) anyValid=true;
+        if(!rowOk && !errs.includes('Item rows (name, qty, rate)')) errs.push('Item rows (name, qty, rate)');
+      });
+      items=rows.map(r=>{
+        const expiryInp=r.querySelector('.it-expiry');
+        return {name:r.querySelector('.it-name').value.trim(), qty:Number(r.querySelector('.it-qty').value)||0,
+          rate:Number(r.querySelector('.it-rate').value)||0, discPct:Number(r.querySelector('.it-disc').value)||0,
+          gstPct:Number(r.querySelector('.it-gst').value)||0, expiry: expiryInp?expiryInp.value||'':''};
+      }).filter(i=>i.name);
+      if(!items.length && !anyValid){errs.push('At least one item');}
+    } else {
+      const cfg=cfgFor(cat);
+      details={};
+      dyn.querySelectorAll('.dyn-field').forEach(inp=>{
+        const v=inp.value.trim();
+        details[inp.dataset.key]=v;
+        if(!v){inp.classList.add('field-error'); const lbl=cfg.fields.find(f=>f.key===inp.dataset.key); if(lbl && !errs.includes(lbl.label)) errs.push(lbl.label);}
+      });
+      const amtInp=dyn.querySelector('#sAmount');
+      const amt=Number(amtInp.value)||0;
+      if(amt<=0){amtInp.classList.add('field-error'); errs.push(cfg.amountLabel||'Amount');}
+      let discPct=0,gstPct=0;
+      if(cfg.gst){discPct=Number(dyn.querySelector('#sDisc').value)||0; gstPct=Number(dyn.querySelector('#sGst').value)||0;}
+      items=[{name:cfg.amountLabel||'Amount', qty:1, rate:amt, discPct, gstPct}];
+    }
+    if(errs.length){
+      showErr(card.querySelector('#entryErr'), 'Please fill the required field(s): '+errs.join(', '));
+      card.querySelector('#entryErr').scrollIntoView({behavior:'smooth',block:'start'});
+      return;
+    }
+    try{
+      const result = await API.createEntry({projectId: cur.projectId, category:cat,
+        vendor:card.querySelector('#eVendor').value.trim(), invoiceDate:card.querySelector('#eInvDate').value,
+        invoiceNo:card.querySelector('#eInvNo').value.trim(), voucherNo:card.querySelector('#eVouNo').value.trim(),
+        voucherDate:card.querySelector('#eVouDate').value, items, details});
+      alert('Entry saved. Invoice total: '+money(result.total));
+      cur.tab='dashboard'; render();
+    }catch(e){ showErr(card.querySelector('#entryErr'), e.message); }
+  };
+}
+
+async function renderStockTab(body,detail){
+  const pStockCats = detail.categories.filter(c=>["Equipment","Chemicals and Glasswares"].includes(c.category)).map(c=>c.category);
+  const agg = await API.getStock(cur.projectId);
+  const today=new Date().toISOString().slice(0,10);
+  let rows='';
+  agg.forEach(r=>{
+    const bal=r.inQty-r.outQty;
+    let tag='<span class="tag ok">In stock</span>';
+    if(bal<=0) tag='<span class="tag danger">Out of stock</span>';
+    else if(r.nearestExpiry && r.nearestExpiry<today) tag='<span class="tag danger">Expired batch</span>';
+    else if(bal<=2) tag='<span class="tag warn">Low stock</span>';
+    rows+=`<tr><td>${r.category}</td><td>${r.itemName}</td><td>${r.inQty}</td><td>${r.outQty}</td><td><b>${bal}</b></td><td>${r.nearestExpiry||'-'}</td><td>${tag}</td></tr>`;
+  });
+  const card=el(`<div class="card">
+    <h2>Stock — Equipment &amp; Chemicals/Glasswares</h2>
+    <p class="muted">Stock-in is created automatically when an Equipment or Chemicals invoice is saved.</p>
+    <div class="tblwrap"><table><tr><th>Category</th><th>Item</th><th>Purchased</th><th>Issued</th><th>Balance</th><th>Nearest Expiry</th><th>Status</th></tr>
+    ${rows||'<tr><td colspan="7" class="muted">No stock recorded yet.</td></tr>'}</table></div>
+  </div>`);
+  body.appendChild(card);
+  if(!pStockCats.length){
+    body.appendChild(el(`<div class="card"><p class="muted">This project has no Equipment or Chemicals/Glasswares category enabled.</p></div>`));
+    return;
+  }
+  const issueCard=el(`<div class="card">
+    <h2>Record Stock Issue (Usage)</h2>
+    <div id="issueErr"></div>
+    <div class="grid g4">
+      <div><label>Category</label><select id="stCat">${pStockCats.map(k=>`<option>${k}</option>`).join('')}</select></div>
+      <div><label>Item Name</label><input id="stItem" list="stItemList" placeholder="Type or pick item"></div>
+      <div><label>Qty Issued</label><input id="stQty" type="number" min="0"></div>
+      <div><label>Date</label><input id="stDate" type="date"></div>
+    </div>
+    <datalist id="stItemList"></datalist>
+    <div class="grid" style="margin-top:8px"><label>Issued To / Purpose</label><input id="stNote" placeholder="e.g. Lab 2 — student practical batch"></div>
+    <button id="stSave" style="margin-top:10px">Record Issue</button>
+  </div>`);
+  body.appendChild(issueCard);
+  const catSel=issueCard.querySelector('#stCat');
+  const listEl=issueCard.querySelector('#stItemList');
+  function refreshList(){
+    listEl.innerHTML='';
+    agg.filter(r=>r.category===catSel.value).forEach(r=>listEl.appendChild(el(`<option value="${r.itemName}"></option>`)));
+  }
+  catSel.onchange=refreshList; refreshList();
+  issueCard.querySelector('#stSave').onclick=async ()=>{
+    issueCard.querySelectorAll('.field-error').forEach(i=>i.classList.remove('field-error'));
+    const itemInp=issueCard.querySelector('#stItem'), qtyInp=issueCard.querySelector('#stQty'), dateInp=issueCard.querySelector('#stDate');
+    const cat=catSel.value, itemName=itemInp.value.trim(), qty=Number(qtyInp.value)||0, date=dateInp.value;
+    const errs=[];
+    if(!itemName){errs.push('Item Name'); itemInp.classList.add('field-error');}
+    if(qty<=0){errs.push('Qty Issued'); qtyInp.classList.add('field-error');}
+    if(!date){errs.push('Date'); dateInp.classList.add('field-error');}
+    if(errs.length){showErr(issueCard.querySelector('#issueErr'),'Please fill: '+errs.join(', '));return;}
+    try{
+      await API.issueStock({projectId:cur.projectId, category:cat, itemName, qty, date, note:issueCard.querySelector('#stNote').value.trim()});
+      cur.tab='stock'; render();
+    }catch(e){ showErr(issueCard.querySelector('#issueErr'), e.message); }
+  };
+  const tx = await API.getStockTx(cur.projectId);
+  const txCard=el(`<div class="card">
+    <h2>Recent Stock Transactions</h2>
+    <div class="tblwrap"><table><tr><th>Date</th><th>Category</th><th>Item</th><th>Type</th><th>Qty</th><th>Note</th><th>By</th></tr>
+    ${tx.map(t=>`<tr><td>${t.date||'-'}</td><td>${t.category}</td><td>${t.itemName}</td><td>${t.type==='in'?'Stock In':'Issued'}</td><td>${t.qty}</td><td>${t.note||'-'}</td><td>${t.by||'-'}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">No transactions yet</td></tr>'}</table></div>
+  </div>`);
+  body.appendChild(txCard);
+}
+
+async function renderStatementTab(body,detail){
+  const entries = await API.getEntries(cur.projectId);
+  let sumRows='';
+  detail.categories.forEach(c=>{
+    sumRows+=`<tr><td>${c.category}</td><td>${money(c.sanctioned)}</td><td>${money(c.spent)}</td><td>${money(c.balance)}</td></tr>`;
+  });
+  function itemsSummary(e){
+    const cfg=CAT_FIELDS[e.category];
+    if(cfg && cfg.fields && cfg.fields.length && e.details){
+      const parts=cfg.fields.map(f=>e.details[f.key]?(f.label+': '+e.details[f.key]):null).filter(Boolean);
+      return parts.join(' · ')||'-';
+    }
+    return e.items.map(i=>i.name+' x'+i.qty+(i.expiry?' (exp '+i.expiry+')':'')).join(', ');
+  }
+  let detRows='';
+  entries.forEach(e=>{
+    detRows+=`<tr><td>${e.invoiceDate||'-'}</td><td>${e.category}</td><td>${e.invoiceNo}</td><td>${e.voucherNo||'-'}</td><td>${e.voucherDate||'-'}</td><td>${e.vendor||'-'}</td><td>${itemsSummary(e)}</td><td>${money(e.total)}</td></tr>`;
+  });
+  const card=el(`<div class="card" id="stmtCard">
+    <div class="row"><h2>Account Statement — ${detail.name}</h2>
+      <div><button class="secondary small" id="printBtn">🖨 Print</button> <button class="small" id="csvBtn">⬇ Export CSV</button></div>
+    </div>
+    <p class="muted">Project Type: ${detail.type} · Academic Year: ${detail.year} ${detail.extended?'(Extended)':''} · Lab: ${detail.lab||''}</p>
+    <h3>Category Summary</h3>
+    <div class="tblwrap"><table><tr><th>Category</th><th>Sanctioned</th><th>Spent</th><th>Balance</th></tr>${sumRows}
+    <tr style="font-weight:bold"><td>TOTAL</td><td>${money(detail.totalSanctioned)}</td><td>${money(detail.totalSpent)}</td><td>${money(detail.totalSanctioned-detail.totalSpent)}</td></tr></table></div>
+    <h3>Invoice Detail (for Finance Office / Local Fund Audit)</h3>
+    <div class="tblwrap"><table><tr><th>Invoice Date</th><th>Category</th><th>Invoice No.</th><th>Voucher No.</th><th>Voucher Date</th><th>Vendor</th><th>Items</th><th>Amount</th></tr>
+    ${detRows||'<tr><td colspan="8" class="muted">No entries yet</td></tr>'}</table></div>
+  </div>`);
+  body.appendChild(card);
+  card.querySelector('#printBtn').onclick=()=>window.print();
+  card.querySelector('#csvBtn').onclick=()=>{
+    let csv='Invoice Date,Category,Invoice No,Voucher No,Voucher Date,Vendor,Items,Amount\n';
+    entries.forEach(e=>{csv+=`"${e.invoiceDate||''}","${e.category}","${e.invoiceNo}","${e.voucherNo||''}","${e.voucherDate||''}","${e.vendor||''}","${itemsSummary(e).replace(/"/g,'""')}",${e.total}\n`;});
+    const blob=new Blob([csv],{type:'text/csv'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=detail.name.replace(/\s+/g,'_')+'_statement.csv'; a.click();
+  };
+}
+
+render();
+</script>
+</body>
+</html>

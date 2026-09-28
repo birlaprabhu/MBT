@@ -1,0 +1,14 @@
+{
+  "name": "dept-fund-manager-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Intranet server for the Microbiology Dept. Project Fund Manager. Run this on one machine on your LAN; every professor/admin opens it in a browser from their own computer.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "better-sqlite3": "^11.3.0"
+  }
+}
